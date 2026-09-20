@@ -15,36 +15,38 @@
 --   - Spatial indexes on both geom columns (CREATE INDEX ... USING GIST (geom))
 --
 -- Run all queries:
---   psql -h localhost -U gisuser -d nyc -f analysis.sql
+--   psql -h localhost -U gis -d nyc -f analysis.sql
 -- =============================================================================
 
 
 -- -----------------------------------------------------------------------------
 -- Query 1: Filter
---
+
 -- Goal: Sanity check that the data loaded. Pull all neighborhoods in Manhattan.
 -- Expected output: ~37 rows (Manhattan neighborhoods).
 -- -----------------------------------------------------------------------------
 
-SELECT neighborhood, borough
-FROM nyc_neighborhoods
-WHERE borough = 'Manhattan'
-ORDER BY neighborhood;
+-- Select all neighborhoods in Manhattan borough from the nyc_neighborhoods table. Order by neighborhood name.
 
+SELECT ntaname, boroname
+FROM public.nyc_neighborhoods
+WHERE boroname = 'Manhattan'
+ORDER BY ntaname;
 
 -- -----------------------------------------------------------------------------
 -- Query 2: Spatial join
---
+
 -- Goal: Match each hydrant to the neighborhood that contains it, using
 -- ST_Contains.
 -- Expected output: one row per hydrant (~109,725) with the neighborhood name.
 -- -----------------------------------------------------------------------------
 
--- [TODO] Write a query that selects h.hydrant_id, n.neighborhood, n.borough
--- by joining nyc_hydrants h to nyc_neighborhoods n using
--- ST_Contains(n.geom, h.geom).
--- Use LIMIT 10 for a first peek so you don't print the whole result set.
+-- Joining nyc_neighborhoods and nyc_hydrants using ST_Contains (neighborhood polygons containing hydrant points). Show first 10 rows.
 
+SELECT h.unitid, n.ntaname, n.boroname
+FROM public.nyc_neighborhoods AS n
+JOIN public.nyc_hydrants AS h ON ST_Contains(n.geom, h.geom)
+LIMIT 10;
 
 -- -----------------------------------------------------------------------------
 -- Query 3: Aggregate
@@ -53,8 +55,14 @@ ORDER BY neighborhood;
 -- Expected output: 262 rows (one per neighborhood) with a hydrant_count.
 -- -----------------------------------------------------------------------------
 
--- [TODO] Take Query 2 and wrap it in a GROUP BY. Use COUNT(h.*) to count
--- hydrants per neighborhood. ORDER BY hydrant_count DESC.
+-- Count hydrants per neighborhood and return one row for each neighbourhood; Order by number of hydrants in descending order. 
+-- Left Join includes neighborhoods with zero matched hydrants. nta2020 uniquely identifies each neighborhood, while ntaname and boroname remain as readable labels.
+
+SELECT n.nta2020, n.ntaname, n.boroname, COUNT(h.unitid) AS hydrant_count
+FROM public.nyc_neighborhoods AS n
+LEFT JOIN public.nyc_hydrants AS h ON ST_Contains(n.geom, h.geom)
+GROUP BY n.nta2020, n.ntaname, n.boroname
+ORDER BY hydrant_count DESC;
 
 
 -- -----------------------------------------------------------------------------
@@ -66,12 +74,18 @@ ORDER BY neighborhood;
 -- Expected output: 262 rows with hydrant_count, area_km2, density_per_km2.
 -- -----------------------------------------------------------------------------
 
--- [TODO] Extend Query 3 with:
---   - ST_Area(ST_Transform(n.geom, 2263)) / 10763910.42  AS area_km2
---     (10,763,910.42 square feet = 1 square kilometer)
---   - hydrant_count / area_km2  AS density_per_km2
--- ORDER BY density_per_km2 DESC.
+-- Reproject each NTA to EPSG:2263 to calculate area for each NTA in square feet. Convert area to square kilometers (area_km2)
+-- and divide each NTA´s hydrant count (hydrant_count) by the area. Sort the resulting hydrants-per-km2 values descending.
 
+SELECT 
+    n.ntaname, n.nta2020, n.boroname,
+    ST_Area(ST_Transform(n.geom, 2263)) / 10763910.42  AS area_km2,
+    COUNT(h.unitid) AS hydrant_count,
+    COUNT(h.unitid) /  (ST_Area(ST_Transform(n.geom, 2263)) / 10763910.42) AS density_per_km2
+FROM public.nyc_neighborhoods AS n
+LEFT JOIN public.nyc_hydrants as h ON ST_Contains(n.geom, h.geom)
+GROUP BY n.geom, n.nta2020, n.ntaname, n.boroname
+ORDER BY density_per_km2 DESC;
 
 -- -----------------------------------------------------------------------------
 -- Query 5: Buffer + Union + Intersection (coverage analysis)
@@ -81,21 +95,19 @@ ORDER BY neighborhood;
 -- Expected output: 262 rows with neighborhood, area_km2, covered_pct.
 -- -----------------------------------------------------------------------------
 
--- [TODO] Build this in two CTEs:
---   1. hydrant_coverage: ST_Union(ST_Buffer(ST_Transform(geom, 2263), 100))
---      across ALL hydrants. (One big multipolygon of 100m buffers.)
---   2. The main SELECT: for each neighborhood, compute
---        ST_Area(ST_Intersection(ST_Transform(n.geom, 2263), hc.coverage_geom))
---        divided by ST_Area(ST_Transform(n.geom, 2263))
---      to get the percent of each neighborhood within 100m of a hydrant.
--- ORDER BY covered_pct DESC.
+-- Create a 100m buffer for each hydrant and merge all buffer polygons using ST_Union. Then query intersections with each neighborhood polygon.
+-- Finally divide the intersected coverage area by that neighborhood´s total area and multiply by 100.
 
-
--- =============================================================================
--- Notes for your README
---
--- - Query 1 is your sanity check. Don't skip it.
--- - Query 4 is your headline. Identify the top 5 and bottom 5 neighborhoods.
--- - Query 5 is the deeper insight. Look at the median covered_pct. That number
---   is your case-study finding.
--- =============================================================================
+WITH hydrant_coverage AS (
+    SELECT
+        ST_Union(ST_Buffer(ST_Transform(h.geom, 2263), 328.0833)) AS coverage_geom
+        FROM public.nyc_hydrants as h
+    )
+SELECT 
+    n.ntaname, n.nta2020, n.boroname,
+    ROUND(((ST_Area(ST_Intersection(ST_Transform(n.geom, 2263), hc.coverage_geom))
+    / ST_Area(ST_Transform(n.geom,2263)))*100)::numeric, 2) AS coverage_pct
+FROM 
+    public.nyc_neighborhoods AS n
+    CROSS JOIN hydrant_coverage as hc
+ORDER BY coverage_pct DESC;
