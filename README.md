@@ -10,6 +10,7 @@ Where is hydrant coverage densest in NYC, and which neighborhoods are underserve
 - **NYC Fire Hydrants.** 109,725 points (Source: [NYC Open Data](https://opendata.cityofnewyork.us))
 - License: NYC Open Data Terms of Use
 - All data in EPSG:4326
+- Download Date: 2026-09-10
 
 ## Methodology
 
@@ -61,3 +62,13 @@ jupyter lab analysis.ipynb
 - GeoPandas + SQLAlchemy + matplotlib
 - Jupyter Lab
 - GeoParquet
+
+
+-- =============================================================================
+-- Notes for your README
+--
+-- - Query 1 is your sanity check. Don't skip it.
+-- - Query 4 is your headline. Identify the top 5 and bottom 5 neighborhoods.
+-- - Query 5 is the deeper insight. Look at the median covered_pct. That number
+--   is your case-study finding.
+-- =============================================================================
