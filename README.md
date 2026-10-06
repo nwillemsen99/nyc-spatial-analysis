@@ -101,4 +101,4 @@ The interactive map can be viewed by running [`analysis.ipynb`](analysis.ipynb).
 
 ## What I learned
 
-_Write this section yourself in your own voice. Focus on the comparison between SQL and GeoPandas, the importance of projected coordinate systems, and what you learned from creating the visualizations and reusable GeoParquet output._
+While SQL was efficient for querying, spatial joins and aggregating data stored in a database, GeoPandas offered more flexibility for further analysis like visualizing the results and exporting reusable spatial data. With Python, I created a static choropleth (Matplotlib) and an interactive map using GeoPandas `.explore()`, without importing the results into QGIS or ArcGIS. Overall, SQL's syntax felt easier for database queries, while Python (GeoPandas) offered more options for presentation.
